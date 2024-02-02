@@ -1,0 +1,20 @@
+{
+  "name": "mybot",
+  "version": "1.0.0",
+  "description": "A bot with multifunction commands",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "qquu",
+  "license": "ISC",
+  "dependencies": {
+    "discord-reply": "^0.1.2",
+    "discord.js": "^12.5.3",
+    "dotenv": "^16.3.1",
+    "jsoning": "^0.13.23",
+    "openai": "^3.3.0",
+    "weather-js": "^2.0.0",
+    "weather.js": "^0.1.0"
+  }
+}
