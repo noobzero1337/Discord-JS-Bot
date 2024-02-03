@@ -430,7 +430,7 @@ My prefix is ( * ) `
       )
       .addField(
         "🛠️**__ Utility__**",
-        `***test\n*avatar <userID>\n*dm <user> <text>\n*weather**`
+        `***test\n*avatar <userID>\n*dm <user ID> <text>\n*weather**`
       )
       .setFooter(`Made by notququ`)
       .setTimestamp();
