@@ -313,21 +313,33 @@ Write and follow the sentences below!**`);
     }
 
   if (command === "dm") {
-      if (!message.content.startsWith(prefix)) return;
-      const user = message.mentions.users.first();
-      if (!user) return message.channel.send("please mention a user to DM");
-  
-      const dm = args.slice(1).join(" ");
-      if (!dm) return message.channel.send("I can't DM an empty message");
-  
-      try {
-        await user.send(dm);
-      } catch (error) {
-        return message.channel(
-          "This user have DM closed, so I can't DM him/her!"
-        );
-      }
-      message.channel.send("Successfuly DM the user!");
+    const userId = args[0];
+
+    if (!userId || !/^\d+$/.test(userId)) {
+      return message.channel.send("User ID is not found or You didn't prove a User ID?");
+    }
+
+    const user = await client.users.fetch(userId).catch(error => {
+      console.error(`Error fetching user: ${error.message}`);
+      return null;
+    });
+
+    args.shift(); 
+
+    const dmContent = args.join(' ');
+
+    if (!dmContent) {
+      return message.channel.send("I can't DM an empty message.");
+    }
+
+    try {
+      await user.send(dmContent);
+      message.channel.send(`Successfully DM'd ${user.tag}!`);
+    } catch (error) {
+      console.error(`Error sending DM: ${error.message}`);
+      return message.channel.send(`Failed send DM to ${user.tag}.`);
+    }
+
     }
 
     /*----------------------------------------economy commands---------------------------------------------------*/
