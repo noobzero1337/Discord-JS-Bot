@@ -7,7 +7,15 @@ const database = new jsoning('bank.json');
 require('dotenv/config');
 const botgpt = require('./chatbot.js');
 
-const { token, channelId } = require('./config.json');
+const { channelId } = require('./config.json');
+const { createPool } = require('mysql2/promise');
+require('dotenv').config();
+
+const connection = createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  database: process.env.DB_DATABASE,
+});
 
 const prefix = '*';
 
@@ -342,74 +350,130 @@ Write and follow the sentences below!**`);
 
     }
 
-    /*----------------------------------------economy commands---------------------------------------------------*/
+    /*----------------------------------------gamble commands---------------------------------------------------*/
 
-    if (command == "balance") {
-      var data = await database.get(message.author.id);
-      if(!data) data = {
-        wallet: 0,
-        bank: 0
-      }
+    if (command === "register") {
+      const userId = message.author.id;
+      const username = message.content.split(' ')[1];
 
-      message.channel.send (
-        new MessageEmbed()
-        .setTitle(message.author.username + "`s Balance")
-        .setColor("BLUE")
-        .setDescription(`
-        Wallet: :dollar: ${data.wallet}
-        Bank: :moneybag: ${data.bank}
-        `)
-        .setTimestamp()
-      )
+    if (!username) {
+      return message.lineReply('Please provide a username to register.');
     }
 
-    if(command === "beg") {
-      var data = await database.get(message.author.id);
-      if(!data) data = {
-        wallet: 0,
-        bank: 0
+    try {
+
+      const [existingUsers] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
+      if (existingUsers.length > 0) {
+        return message.lineReply('You are already registered.');
       }
-      const amount = Math.floor(Math.random() * Math.floor(500));
-      await database.set(message.author.id, {
-        wallet: data.wallet + amount,
-        bank:data.bank
-      });
-      const outcomes = [
-        "Elon Musk",
-        "Your Mom",
-        "The President",
-        "Someone"
-      ]
-      message.lineReply(
-        new MessageEmbed()
-        .setDescription(`
-        ${outcomes[Math.floor(Math.random() * Math.floor(outcomes.length))]
-        } Gave You **${amount}** coins
-        `)
-        .setColor("GREEN")
-      )
+
+
+      await connection.query('INSERT INTO tb_user_data (user_id, username) VALUES (?, ?)', [userId, username]);
+      message.lineReply('Registration successfully!');
+    } catch (error) {
+      console.error(error);
+      message.lineReply('An error occurred during registration.');
+    }
+  };
+
+    if(command === "daily") {
+      const userId = message.author.id;
+      const [rows] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
+
+    if (rows.length === 0) {
+      return message.lineReply('You are not registered. Type *register to register.');
+    }
+
+    const cooldownTime = 24 * 60 * 60 * 1000; 
+    const lastDaily = new Date(rows[0].last_daily).getTime();
+    const currentTime = new Date().getTime();
+
+    if (currentTime - lastDaily < cooldownTime) {
+      const remainingTime = cooldownTime - (currentTime - lastDaily);
+      return message.lineReply(`You can claim your daily reward again in ${Math.ceil(remainingTime / 1000 / 60 / 60)} hours.`);
+    }
+
+    const minReward = 500;
+    const maxReward = 1000;
+    const dailyReward = Math.floor(Math.random() * (maxReward - minReward + 1)) + minReward;
+    await connection.query('UPDATE tb_user_data SET balance = balance + ?, last_daily = CURRENT_TIMESTAMP WHERE user_id = ?', [dailyReward, userId]);
+    message.lineReply(`You've claimed your daily reward and received ${dailyReward} coins!`);
+
+  };
+
+    if (command === "bet") {
+    const userId = message.author.id;
+    const [userData] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
+
+    if (userData.length === 0) {
+      return message.lineReply('You are not registered. Use *register <username> to register.');
+    }
+
+    const { username, balance } = userData[0];
+    const betAmount = parseInt(args[0], 10);
+
+    if (isNaN(betAmount) || betAmount <= 0) {
+      return message.lineReply('Invalid bet amount. Please provide a positive number.');
+    }
+
+    if (betAmount > balance) {
+      return message.lineReply('Insufficient balance for this bet.');
+    }
+
+    const isWin = Math.random() < 0.5;
+    const result = isWin ? 'Win' : 'Lose';
+    const outcome = isWin ? +betAmount : -betAmount;
+
+    await connection.query('UPDATE tb_user_data SET balance = balance + ?, ' +
+    (isWin ? 'win_count = win_count + 1' : 'lose_count = lose_count + 1') +
+    ' WHERE user_id = ?', [outcome, userId]);
+
+    const embedColor = isWin ? '#00ff00' : '#ff0000';
+    const request = message.author.tag;
+    const embed = new Discord.MessageEmbed()
+      .setColor(embedColor)
+      .setTitle(`${username}'s ${result} The Gambling`)
+      .addField('Bet Amount', `${betAmount} coins`)
+      .addField('Outcome', `${outcome} coins`)
+      .addField('New Balance', `${balance + outcome} coins`)
+      .setFooter(`Requested by ${request}`)
+      .setTimestamp();
+
+      if (embed.fields.length > 0) {
+        message.lineReply(embed);
+      } else {
+        console.error('Error: Empty embed detected');
+        message.lineReply('An error occurred while processing the gamble command.');
+      }
     };
 
-    if (command === "deposit" || command === "depo") {
-      var data = await database.get(message.author.id);
-      if(!data) data = {
-        wallet: 0,
-        bank: 0
-      };
-      if (isNaN(args[0])) return message.channel.send("Only numbers are allowed");
-      if(parseInt(args[0]) > data.wallet) return message.channel.send("You don't have money on your wallet!");
+    if (command === "profile") {
+      let targetUser = message.mentions.users.first() || message.author;
+      const [userData] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [targetUser.id]);
+  
+      if (userData.length === 0) {
+        return message.lineReply(`${targetUser.tag} aren't registered.`);
+      }
+  
+      const { username, balance } = userData[0];
+      const request = message.author.tag;
+      const avatarURL = message.author.displayAvatarURL({ format: "png", dynamic: true });
+      const embed = new Discord.MessageEmbed()
+       .setColor('#0099ff')
+       .setAuthor(`${username}'s Profile`, avatarURL)
+       .addField('Username', username)
+       .addField('Balance', `${balance} coins`)
+       .addField('Win', `${userData[0].win_count}`)
+       .addField('Lose', `${userData[0].lose_count}`)
+       .setFooter(`Requested by ${request}`)
+       .setTimestamp();
 
-      database.set(message.author.id, {
-        wallet: data.wallet - parseInt(args[0]),
-        bank: data.bank + parseInt(args[0])
-      });
-
-      message.lineReply (
-        new MessageEmbed()
-        .setDescription(`
-        You've Deposited **${args[0]} Money to Bank**
-        `)
-      )
+      if (embed.fields.length > 0) {
+        message.lineReply(embed);
+      } else {
+        console.error('Error: Empty embed detected');
+        message.reply('An error occurred while fetching your profile.');
+       }
     };
     
 
@@ -425,12 +489,16 @@ Write and follow the sentences below!**`);
 My prefix is ( * ) `
       )
       .addField(
-        "🕹️**__Fun__**",
+        "🕹️ **__Fun__**",
         `***ship <user>\n*ppsize\n*rps\n*fasttype / fast**`
       )
       .addField(
-        "🛠️**__ Utility__**",
+        "🛠️ **__ Utility__**",
         `***test\n*avatar <userID>\n*dm <user ID> <text>\n*weather**`
+      )
+      .addField(
+        "🎰 **__Gambling__**",
+        `***register <username>\n*bet <amount>\n*daily\n*profile**`
       )
       .setFooter(`Made by notququ`)
       .setTimestamp();
