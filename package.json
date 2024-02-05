@@ -13,6 +13,7 @@
     "discord.js": "^12.5.3",
     "dotenv": "^16.3.1",
     "jsoning": "^0.13.23",
+    "mysql2": "^3.9.1",
     "openai": "^3.3.0",
     "weather-js": "^2.0.0",
     "weather.js": "^0.1.0"
