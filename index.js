@@ -96,7 +96,7 @@ client.on('message', async message => {
 
   }
 
-  if (command === `weather`) {
+  if (command === "weather") {
     let degreetype = "C";
     let city = args.join(" ");
 
@@ -168,6 +168,22 @@ client.on('message', async message => {
     }
   }
   
+  if (command === "snipe") {
+    const channelId = message.channel.id;
+        const deletedMsg = deletedMessages[channelId];
+        if (deletedMsg) {
+            const { content, author, timestamp } = deletedMsg;
+            const snipeEmbed = new Discord.MessageEmbed()
+                .setColor('#ff0000')
+                .setTitle('Sniped Message')
+                .addField('Content', content)
+                .addField('Author', author)
+                .addField('Timestamp', new Date(timestamp).toLocaleString());
+            message.channel.send(snipeEmbed);
+        } else {
+            message.channel.send('No recently deleted messages to snipe.');
+        }
+  }
 
   if (command === "fasttype" || command === "fast") {
     const AREA = [1, 2];
@@ -381,7 +397,7 @@ Write and follow the sentences below!**`);
 
 
       await connection.query('INSERT INTO tb_user_data (user_id, username) VALUES (?, ?)', [userId, username]);
-      message.lineReply('Registration successfull!');
+      message.lineReply('Registration successful!');
     } catch (error) {
       console.error(error);
       message.lineReply('An error occurred during registration.');
@@ -390,7 +406,7 @@ Write and follow the sentences below!**`);
 
     if(command === "daily") {
       const userId = message.author.id;
-      const [rows] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
+      const [rows] = await connection.query('SELECT last_daily FROM tb_user_data WHERE user_id = ?', [userId]);
 
     if (rows.length === 0) {
       return message.lineReply("You are not registered. `Type *register` to register.");
@@ -408,7 +424,7 @@ Write and follow the sentences below!**`);
         return `\`${hours} hours\``;
     }
 
-    message.lineReply(`You can claim your daily reward again in ${formatTime(Math.ceil(remainingTime / 1000))}`);
+    message.lineReply(`You can claim your daily reward again in ${formatTime(remainingTime / 1000)}`);
 
     } else {
 
@@ -443,7 +459,7 @@ Write and follow the sentences below!**`);
 
     const isWin = Math.random() < 0.5;
     const result = isWin ? 'Win' : 'Lose';
-    const outcome = isWin ? +betAmount : -betAmount;
+    const outcome = isWin ? betAmount : -betAmount;
 
     await connection.query('UPDATE tb_user_data SET balance = balance + ?, ' +
     (isWin ? 'win_count = win_count + 1' : 'lose_count = lose_count + 1') +
@@ -455,7 +471,7 @@ Write and follow the sentences below!**`);
       .setColor(embedColor)
       .setTitle(`${username}'s ${result} The Gambling`)
       .addField('Bet Amount', `${betAmount} coins`)
-      .addField('Outcome', `${outcome} coins`)
+      .addField('Outcome', `${outcome > 0 ? `+${outcome}` : outcome} coins`)
       .addField('New Balance', `${balance + outcome} coins`)
       .setFooter(`Requested by ${request}`)
       .setTimestamp();
@@ -474,8 +490,12 @@ Write and follow the sentences below!**`);
   const amount = parseInt(args[1], 10);
 
   // Validate input
-  if (!receiverUser || !amount || isNaN(amount) || amount <= 0) {
-    return message.lineReply("Invalid command usage. Please use: `*send <@user> <amount>`");
+  if (!receiverUser || !amount) {
+    return message.lineReply("Invalid command usage. Please use: `*send <@user> <amount>` to send coins");
+  }
+
+  if (isNaN(amount) || amount <= 0) {
+    return message.lineReply('Invalid amount. Please provide a positive number.');
   }
 
 
@@ -530,7 +550,7 @@ Write and follow the sentences below!**`);
   
       const { username, balance } = userData[0];
       const request = message.author.tag;
-      const avatarURL = message.author.displayAvatarURL({ format: "png", dynamic: true });
+      const avatarURL = targetUser.displayAvatarURL({ format: "png", dynamic: true });
       const embed = new Discord.MessageEmbed()
        .setColor('#0099ff')
        .setAuthor(`${username}'s Profile`, avatarURL)
@@ -567,7 +587,7 @@ My prefix is ( * ) `
       )
       .addField(
         "🛠️ **__ Utility__**",
-        `***test\n*avatar <userID>\n*dm <user ID> <text>\n*weather**`
+        `***test\n*avatar <userID>\n*dm <user ID> <text>\n*weather\n*snipe**`
       )
       .addField(
         "🎰 **__Gambling__**",
