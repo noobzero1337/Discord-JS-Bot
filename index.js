@@ -11,6 +11,8 @@ const { channelId } = require('./config.json');
 const { createPool } = require('mysql2/promise');
 require('dotenv').config();
 
+const deletedMessages = {};
+
 const connection = createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -51,6 +53,15 @@ client.on("ready", () => {
       type: "PLAYING",
     }); //you can change watching becomes playing and else
   }, 5000);
+});
+
+client.on('messageDelete', deletedMsg => {
+ 
+  deletedMessages[deletedMsg.channel.id] = {
+      content: deletedMsg.content,
+      author: deletedMsg.author.tag,
+      timestamp: deletedMsg.createdTimestamp
+  };
 });
 
 client.on('message', async message => {
@@ -156,6 +167,7 @@ client.on('message', async message => {
       message.channel.send(UnloveEmbed);
     }
   }
+  
 
   if (command === "fasttype" || command === "fast") {
     const AREA = [1, 2];
@@ -369,7 +381,7 @@ Write and follow the sentences below!**`);
 
 
       await connection.query('INSERT INTO tb_user_data (user_id, username) VALUES (?, ?)', [userId, username]);
-      message.lineReply('Registration successfully!');
+      message.lineReply('Registration successfull!');
     } catch (error) {
       console.error(error);
       message.lineReply('An error occurred during registration.');
@@ -381,7 +393,7 @@ Write and follow the sentences below!**`);
       const [rows] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
 
     if (rows.length === 0) {
-      return message.lineReply('You are not registered. Type *register to register.');
+      return message.lineReply("You are not registered. `Type *register` to register.");
     }
 
     const cooldownTime = 24 * 60 * 60 * 1000; 
@@ -390,23 +402,32 @@ Write and follow the sentences below!**`);
 
     if (currentTime - lastDaily < cooldownTime) {
       const remainingTime = cooldownTime - (currentTime - lastDaily);
-      return message.lineReply(`You can claim your daily reward again in ${Math.ceil(remainingTime / 1000 / 60 / 60)} hours.`);
+
+      function formatTime(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        return `\`${hours} hours\``;
     }
 
-    const minReward = 500;
-    const maxReward = 1000;
-    const dailyReward = Math.floor(Math.random() * (maxReward - minReward + 1)) + minReward;
-    await connection.query('UPDATE tb_user_data SET balance = balance + ?, last_daily = CURRENT_TIMESTAMP WHERE user_id = ?', [dailyReward, userId]);
-    message.lineReply(`You've claimed your daily reward and received ${dailyReward} coins!`);
+    message.lineReply(`You can claim your daily reward again in ${formatTime(Math.ceil(remainingTime / 1000))}`);
+
+    } else {
+
+      const minReward = 500;
+      const maxReward = 1000;
+      const dailyReward = Math.floor(Math.random() * (maxReward - minReward + 1)) + minReward;
+      await connection.query('UPDATE tb_user_data SET balance = balance + ?, last_daily = CURRENT_TIMESTAMP WHERE user_id = ?', [dailyReward, userId]);
+      message.lineReply(`You've claimed your daily reward and received ${dailyReward} coins!`);
+
+    }
 
   };
 
-    if (command === "bet") {
+  if (command === "bet") {
     const userId = message.author.id;
     const [userData] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
 
     if (userData.length === 0) {
-      return message.lineReply('You are not registered. Use *register <username> to register.');
+      return message.lineReply("You are not registered. Type `*register <username>` to register.");
     }
 
     const { username, balance } = userData[0];
@@ -447,12 +468,64 @@ Write and follow the sentences below!**`);
       }
     };
 
+  if (command === "send") {
+  const senderId = message.author.id;
+  const receiverUser = message.mentions.users.first();
+  const amount = parseInt(args[1], 10);
+
+  // Validate input
+  if (!receiverUser || !amount || isNaN(amount) || amount <= 0) {
+    return message.lineReply("Invalid command usage. Please use: `*send <@user> <amount>`");
+  }
+
+
+  // Check if sender and receiver are the same
+  if (senderId === receiverUser.id) {
+    return message.lineReply("You can't send coins to yourself.");
+
+  } try {
+
+    const [senderData] = await connection.query('SELECT balance FROM tb_user_data WHERE user_id = ?', [senderId]);
+
+    if (senderData.length === 0) {
+      return message.lineReply("You are not registered. Type `*register <username>` to register");
+    }
+
+    const senderBalance = senderData[0].balance;
+
+    if (amount > senderBalance) {
+      return message.lineReply("Insufficient balance to send this amount of coins.");
+    }
+
+    await connection.query('UPDATE tb_user_data SET balance = balance - ? WHERE user_id = ?', [amount, senderId]);
+
+    try {
+      const [receiverData] = await connection.query('SELECT balance FROM tb_user_data WHERE user_id = ?', [receiverUser.id]);
+
+      if (receiverData.length === 0) {
+        return message.lineReply("Receiver is not registered.");
+      }
+
+      await connection.query('UPDATE tb_user_data SET balance = balance + ? WHERE user_id = ?', [amount, receiverUser.id]);
+
+      message.lineReply(`Successfully sent ${amount} coins to ${receiverUser.tag}`);
+    } catch (receiveError) {
+      console.error(receiverError);
+      return message.lineReply("An error occurred while processing the receiver's balance.");
+    }
+
+  } catch (senderError) {
+    console.error(senderError);
+    return message.lineReply("An error occurred while processing the sender's balance.");
+  }
+  };
+
     if (command === "profile") {
       let targetUser = message.mentions.users.first() || message.author;
       const [userData] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [targetUser.id]);
   
       if (userData.length === 0) {
-        return message.lineReply(`${targetUser.tag} aren't registered.`);
+        return message.lineReply(`${targetUser.tag} are not registered.`);
       }
   
       const { username, balance } = userData[0];
@@ -472,7 +545,7 @@ Write and follow the sentences below!**`);
         message.lineReply(embed);
       } else {
         console.error('Error: Empty embed detected');
-        message.reply('An error occurred while fetching your profile.');
+        message.lineReply('An error occurred while fetching your profile.');
        }
     };
     
@@ -498,7 +571,7 @@ My prefix is ( * ) `
       )
       .addField(
         "🎰 **__Gambling__**",
-        `***register <username>\n*bet <amount>\n*daily\n*profile**`
+        `***register <username>\n*bet <amount>\n*send <@user> <amount>\n*daily\n*profile**`
       )
       .setFooter(`Made by notququ`)
       .setTimestamp();
