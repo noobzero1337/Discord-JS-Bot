@@ -415,16 +415,14 @@ Write and follow the sentences below!**`);
     const cooldownTime = 24 * 60 * 60 * 1000; 
     const lastDaily = new Date(rows[0].last_daily).getTime();
     const currentTime = new Date().getTime();
+    const timeSinceLastDaily = currentTime - lastDaily;
 
-    if (currentTime - lastDaily < cooldownTime) {
-      const remainingTime = cooldownTime - (currentTime - lastDaily);
+    if (timeSinceLastDaily < cooldownTime) {
+      const remainingTime = cooldownTime - timeSinceLastDaily;
+      const hours = Math.floor(remainingTime / (1000 * 60 * 60));
+      const minutes = Math.floor((remainingTime % (1000 * 60 * 60)) / (1000 * 60));
 
-      function formatTime(seconds) {
-        const hours = Math.floor(seconds / 3600);
-        return `\`${hours} hours\``;
-    }
-
-    message.lineReply(`You can claim your daily reward again in ${formatTime(remainingTime / 1000)}`);
+   return message.lineReply(`You can claim your daily reward again in \`${hours} hours, ${minutes} minutes\``);
 
     } else {
 
@@ -458,7 +456,7 @@ Write and follow the sentences below!**`);
     }
 
     const isWin = Math.random() < 0.5;
-    const result = isWin ? 'Win' : 'Lose';
+    const result = isWin ? 'Won' : 'Lost';
     const outcome = isWin ? betAmount : -betAmount;
 
     await connection.query('UPDATE tb_user_data SET balance = balance + ?, ' +
@@ -530,7 +528,7 @@ Write and follow the sentences below!**`);
 
       message.lineReply(`Successfully sent ${amount} coins to ${receiverUser.tag}`);
     } catch (receiveError) {
-      console.error(receiverError);
+      console.error(receiveError);
       return message.lineReply("An error occurred while processing the receiver's balance.");
     }
 
