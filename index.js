@@ -1,23 +1,59 @@
 const Discord = require('discord.js');
 const weather = require('weather-js');
 const { MessageEmbed } = require('discord.js');
+const { MessageActionRow, MessageButton } = require('discord.js');
 const lineReply = require('discord-reply');
 const jsoning = require('jsoning');
 const database = new jsoning('bank.json');
 require('dotenv/config');
 const botgpt = require('./chatbot.js');
+const fs = require('fs');
 
 const { channelId } = require('./config.json');
 const { createPool } = require('mysql2/promise');
 require('dotenv').config();
 
 const deletedMessages = {};
+const clownReactions = {};
+const editedMessages = new Map();
+const databaseFile = 'punishment.json';
+
+const board = Array(9).fill(':white_large_square:');
+
+let currentPlayer = 'X';
 
 const connection = createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   database: process.env.DB_DATABASE,
 });
+
+function printBoard() {
+  let boardString = '';
+  for (let i = 0; i < 9; i += 3) {
+      boardString += board.slice(i, i + 3).join('') + '\n';
+  }
+  return boardString;
+}
+
+function checkWinner() {
+  const winningPositions = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8], // Horizontal
+      [0, 3, 6], [1, 4, 7], [2, 5, 8], // Vertical
+      [0, 4, 8], [2, 4, 6] // Diagonal
+  ];
+
+  for (let i = 0; i < winningPositions.length; i++) {
+      const [a, b, c] = winningPositions[i];
+      if (board[a] === board[b] && board[b] === board[c] && board[a] !== ':white_large_square:') {
+          return board[a];
+      }
+  }
+
+  if (!board.includes(':white_large_square:')) return 'tie';
+  return null;
+}
+
 
 const prefix = '*';
 
@@ -73,8 +109,8 @@ client.on('message', async message => {
     message.lineReply(botgpt);
   }
 
-  if (message.content === "p") {
-    message.channel.send("ppoong");
+  if (message.content === "pajrin" || message.content === "ququ") {
+    message.channel.send("ganteng");
   }
   if (message.content === "halo") {
     message.channel.send("apa cuk");
@@ -103,12 +139,13 @@ client.on('message', async message => {
     await weather.find(
       { search: city, degreeType: degreetype },
       function (err, result) {
-        if (!city) return message.channel.send("Please insert the city name.");
+        if (!city) return message.lineReply("Please insert the city name.");
         if (err || result === undefined || result.length === 0)
-          return message.channel.send(
-            "Unknown city. Perhaps a typo or maybe not a city?"
+          return message.lineReply(
+            "Unknown city. Perhaps got typo or maybe not a city?"
           );
 
+        const request = message.author.tag;
         let current = result[0].current;
         let location = result[0].location;
 
@@ -116,6 +153,7 @@ client.on('message', async message => {
           .setAuthor(current.observationpoint)
           .setDescription(`${current.skytext}`)
           .setThumbnail(current.imageUrl)
+          .setFooter(`Requested by ${request}`)
           .setTimestamp()
           .setColor(0x7289da);
 
@@ -203,7 +241,7 @@ client.on('message', async message => {
     ];
 
       await message.channel.send(`**In 5 seconds your sentence will appear!
-Write and follow the sentences below!**`);
+      Write and follow the sentences below!**`);
       await delay(5000);
       let timevar = 20000;
       let randomword = fastwords[Math.floor(Math.random() * fastwords.length)];
@@ -271,6 +309,39 @@ Write and follow the sentences below!**`);
     return message.channel.send(embed);
   }
 
+  if (command === "hack") {
+    let user = message.mentions.users.first();
+    if (!user) {
+      return message.lineReply("Please mention user will you hack!");
+    }
+
+    let text = [
+      `Getting ${user.tag} information`,
+      `Getting ${user.tag} discord token`,
+      `Sending virus into the user`,
+      `Getting all ${user.tag} information`,
+    ];
+
+    let current = 0;
+    let count = text.length;
+    let editTime = 2000;
+
+    message.channel.send(`Checking ${user.tag} account`).then((msg) => {
+      let interval = setInterval(() => {
+        if (current === count) {
+          msg.edit(`Successfully hack ${user.tag} account`);
+          clearInterval(interval);
+          return;
+        }
+
+        let hackMsg = text[current];
+        msg.edit(hackMsg);
+        current++;
+
+      }, editTime);
+    });
+  }
+
   if (command === "avatar") {
     const input = args.join(" ");
     const user =
@@ -333,6 +404,36 @@ Write and follow the sentences below!**`);
         });
 
     }
+    
+    if (command === "ttt") {
+      const row = parseInt(args[0]) - 1;
+      const col = parseInt(args[1]) - 1;
+
+      // Validasi apakah input adalah angka yang valid
+      if (isNaN(row) || isNaN(col) || row < 0 || row >= 3 || col < 0 || col >= 3) {
+          return message.reply('Input baris dan kolom harus berupa angka antara 1 dan 3!');
+      }
+
+      if (board[row][col] !== ':') {
+          return message.reply('Posisi tersebut sudah diambil!');
+      }
+
+      board[row][col] = symbols[0];
+
+      displayBoard(message);
+
+      const winner = checkWinner();
+      if (winner) {
+          return message.channel.send(`Pemenangnya adalah: ${winner}!`);
+      }
+
+      if (isBoardFull()) {
+          return message.channel.send('Permainan seri!');
+      }
+
+      symbols.reverse();
+      
+    }
   
     if (command === "echo") {
       const echoText = args.join(' ');
@@ -347,6 +448,192 @@ Write and follow the sentences below!**`);
       }
 
     }
+
+  if (command === "msgedit") {
+    const serverId = '1061469032408158218'; // ebol
+    const channelId = '1101568951848271973'; // ngomong-anjing
+    const messageId = args[0]; 
+    const newContent = args.slice(1).join(' '); 
+
+    try {
+        // Periksa apakah ID server sudah ada di dalam Map
+        if (!editedMessages.has(serverId)) {
+            editedMessages.set(serverId, new Map());
+        }
+
+        // Dapatkan Map untuk ID server tersebut
+        const serverMap = editedMessages.get(serverId);
+
+        const channel = client.channels.cache.get(channelId);
+        if (!channel || channel.type !== 'text') {
+            return message.lineReply('Invalid channel or channel type.');
+        }
+
+        // Dapatkan pesan yang ingin diubah berdasarkan ID pesan
+        const targetMessage = await channel.messages.fetch(messageId)
+            .catch(() => null); // Tambahkan catch untuk menangani jika pesan tidak ditemukan
+
+        // Periksa apakah pesan ditemukan dan apakah pengguna memiliki izin untuk mengedit pesan
+        if (!targetMessage || targetMessage.author.id !== client.user.id) {
+            return message.lineReply('Message with the given ID was not found or is not eligible for editing.');
+        }
+
+        // Edit pesan dengan konten baru
+        await targetMessage.edit(newContent);
+        message.lineReply(`Message with ID ${messageId} has been edited.`);
+
+        // Simpan pesan yang diedit ke dalam Map
+        serverMap.set(messageId, targetMessage);
+    } catch (error) {
+        console.error('Error:', error);
+        message.lineReply('An error occurred while editing the message.');
+    }
+    }
+  
+  if (command === "clown") {
+    const userId = args[0]; // User ID
+    const targetServerId = '1061469032408158218'; // ebol
+    const targetChannelId = '1101568951848271973'; // ngomong-anjing
+
+    try {
+        // Cari server tempat pengguna berada
+        const targetGuild = await client.guilds.fetch(targetServerId);
+
+        // Cari member berdasarkan ID di server target
+        const member = await targetGuild.members.fetch(userId);
+
+        // Kirim pesan respons dengan tag pengguna yang dituju tanpa mention
+        message.channel.send(`Clowned **${member.user.tag}** in <#${targetChannelId}>`);
+
+        // Tambahkan pengguna ke daftar reaksi clown untuk server target
+        if (!clownReactions[targetServerId]) {
+            clownReactions[targetServerId] = {};
+        }
+
+        clownReactions[targetServerId][userId] = {
+            channelId: targetChannelId,
+            shouldReact: true
+        };
+
+        // Tunggu pesan selanjutnya dari pengguna target di saluran yang ditentukan
+        const targetChannel = targetGuild.channels.cache.get(targetChannelId);
+        const filter = (msg) => msg.author.id === userId;
+        const collector = targetChannel.createMessageCollector(filter);
+
+        let reactionCount = 0;
+
+        collector.on('collect', async (msg) => {
+            // Tambahkan pengujian untuk menonaktifkan reaksi berdasarkan kondisi tertentu
+            if (reactionCount < 100 && clownReactions[targetServerId][userId].shouldReact) {
+                // Tambahkan reaksi clown pada pesan yang dikirim oleh pengguna target
+                await msg.react('🤡');
+                reactionCount++;
+            } else {
+                // Hentikan kolektor jika telah memberi reaksi pada 100 pesan atau kondisi tidak memenuhi
+                collector.stop();
+            }
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        message.reply('An error occurred while using command.');
+    }
+  }
+
+  if (command === "unclown") {
+    const userId = args[0]; // User ID
+    const targetServerId = '1061469032408158218'; // ebol
+
+    // Verifikasi apakah pengguna ada dalam daftar reaksi clown untuk server target
+    if (clownReactions[targetServerId] && clownReactions[targetServerId][userId]) {
+        // Hapus pengguna dari daftar reaksi clown untuk server target
+        delete clownReactions[targetServerId][userId];
+        const user = client.users.cache.get(userId);
+        message.channel.send(`Unclowned **${user.tag}**`);
+    } else {
+        // Tampilkan pesan kesalahan jika pengguna tidak ditemukan dalam daftar reaksi clown
+        message.lineReply(`Can't find the user in react clown list.`);
+    }
+  }
+
+  if (command === "msgclown") {
+    const messageId = args[0]; // Message ID
+    const targetServerId = '1061469032408158218'; // ebol
+    const targetChannelId = '1101568951848271973'; // ngomong-anjing
+
+    try {
+        // Dapatkan server tempat pesan berada
+        const targetGuild = await client.guilds.fetch(targetServerId);
+
+        // Dapatkan pesan berdasarkan ID pesan
+        const targetChannel = await targetGuild.channels.cache.get(targetChannelId);
+        const targetMessage = await targetChannel.messages.fetch(messageId);
+
+        // Kirim pesan respons
+        message.channel.send(`Clowned message ${messageId} in <#${targetChannelId}>`);
+
+        // Tambahkan reaksi clown pada pesan yang sesuai
+        await targetMessage.react('🤡');
+
+        // Tambahkan pesan ke daftar reaksi clown untuk server target
+        if (!clownReactions[targetServerId]) {
+            clownReactions[targetServerId] = {};
+        }
+
+        clownReactions[targetServerId][messageId] = {
+            channelId: targetChannelId,
+            shouldReact: true
+        };
+    } catch (error) {
+        console.error('Error:', error);
+        message.reply('An error occurred while using command.');
+    }
+  }
+
+  if (command === "clownlist") {
+    const targetServerId = '1061469032408158218'; // ebol
+
+    // Verifikasi apakah ada daftar reaksi clown untuk server target
+    if (clownReactions[targetServerId]) {
+        // Dapatkan array pengguna dari daftar reaksi clown
+        const clownedUsers = Object.keys(clownReactions[targetServerId]);
+        
+        // Jika ada pengguna dalam daftar, kirim daftar pengguna ke saluran
+        if (clownedUsers.length > 0) {
+            const userList = clownedUsers.map(userId => {
+                const user = client.users.cache.get(userId);
+                return user ? user.tag : userId; // Gunakan tag pengguna jika tersedia, jika tidak gunakan ID pengguna
+            });
+            message.channel.send(`Pengguna dalam daftar reaksi clown: \n${userList.join('\n')}`);
+        } else {
+            message.channel.send('Tidak ada pengguna dalam daftar reaksi clown.');
+        }
+    } else {
+        message.channel.send('Tidak ada daftar reaksi clown untuk server ini.');
+    }
+  }
+
+  if (command === "nuke") {
+    if (!message.member.hasPermission("ADMINISTRATOR")) {
+      return message.lineReply("Sorry, you don't have permission to use this command.");
+  }
+
+  let pos = message.channel.position;
+
+  message.channel.clone().then((c) => {
+      message.channel.delete()
+          .then(() => {
+              c.setPosition(pos);
+              c.send("This channel has been nuked!\nhttps://imgur.com/LIyGeCR");
+          })
+          .catch((error) => {
+              console.error(error);
+              message.lineReply("Failed to nuke the channel.");
+          });
+  }).catch((error) => {
+      console.error(error);
+      message.lineReply("Failed to clone the channel.");
+  });
+  }
 
   if (command === "dm") {
     const userId = args[0];
@@ -375,8 +662,8 @@ Write and follow the sentences below!**`);
       console.error(`Error sending DM: ${error.message}`);
       return message.channel.send(`Failed send DM to ${user.tag}.`);
     }
-
-    }
+  }
+    
 
     /*----------------------------------------gamble commands---------------------------------------------------*/
 
@@ -406,7 +693,7 @@ Write and follow the sentences below!**`);
 
     if(command === "daily") {
       const userId = message.author.id;
-      const [rows] = await connection.query('SELECT last_daily FROM tb_user_data WHERE user_id = ?', [userId]);
+      const [rows] = await connection.query('SELECT last_daily, daily_count FROM tb_user_data WHERE user_id = ?', [userId]);
 
     if (rows.length === 0) {
       return message.lineReply("You are not registered. `Type *register` to register.");
@@ -429,7 +716,12 @@ Write and follow the sentences below!**`);
       const minReward = 500;
       const maxReward = 1000;
       const dailyReward = Math.floor(Math.random() * (maxReward - minReward + 1)) + minReward;
-      await connection.query('UPDATE tb_user_data SET balance = balance + ?, last_daily = CURRENT_TIMESTAMP WHERE user_id = ?', [dailyReward, userId]);
+      const newDailyCount = rows[0].daily_count + 1;
+
+      await Promise.all([
+        connection.query('UPDATE tb_user_data SET balance = balance + ?, last_daily = CURRENT_TIMESTAMP, daily_count = ? WHERE user_id = ?', [dailyReward, newDailyCount, userId])
+      ]);
+
       message.lineReply(`You've claimed your daily reward and received ${dailyReward} coins!`);
 
     }
@@ -460,6 +752,7 @@ Write and follow the sentences below!**`);
     const outcome = isWin ? betAmount : -betAmount;
 
     await connection.query('UPDATE tb_user_data SET balance = balance + ?, ' +
+    'total_gamble = total_gamble + 1, ' +
     (isWin ? 'win_count = win_count + 1' : 'lose_count = lose_count + 1') +
     ' WHERE user_id = ?', [outcome, userId]);
 
@@ -538,7 +831,7 @@ Write and follow the sentences below!**`);
   }
   };
 
-    if (command === "profile") {
+  if (command === "profile") {
       let targetUser = message.mentions.users.first() || message.author;
       const [userData] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [targetUser.id]);
   
@@ -546,7 +839,7 @@ Write and follow the sentences below!**`);
         return message.lineReply(`${targetUser.tag} are not registered.`);
       }
   
-      const { username, balance } = userData[0];
+      const { username, balance, total_gamble, daily_count } = userData[0];
       const request = message.author.tag;
       const avatarURL = targetUser.displayAvatarURL({ format: "png", dynamic: true });
       const embed = new Discord.MessageEmbed()
@@ -554,8 +847,10 @@ Write and follow the sentences below!**`);
        .setAuthor(`${username}'s Profile`, avatarURL)
        .addField('Username', username)
        .addField('Balance', `${balance} coins`)
+       .addField('Total Bets', `${total_gamble}`)
        .addField('Win', `${userData[0].win_count}`)
        .addField('Lose', `${userData[0].lose_count}`)
+       .addField('Daily Count', `${daily_count}`)
        .setFooter(`Requested by ${request}`)
        .setTimestamp();
 
@@ -566,38 +861,360 @@ Write and follow the sentences below!**`);
         message.lineReply('An error occurred while fetching your profile.');
        }
     };
-    
+   
+     /*-----------------------------------------punishment commands----------------------------------------------------*/
 
+  if (command === "warn") {
+      if (!message.member.permissions.has('KICK_MEMBERS')) {
+        return message.lineReply(`You don't have enough permission to use this command.`);
+    }
+
+    const targetId = args[0];
+        let targetUser;
+
+        // Periksa apakah targetId adalah userID atau nickname
+        if (targetId) {
+            // Cek apakah targetId adalah userID
+            let isValidUserId = true;
+            let isValidUser = await client.users.fetch(targetId).catch(() => isValidUserId = false);
+            if (!isValidUserId) {
+                // Jika bukan userID, coba mencari dengan nickname di server
+                const targetMember = message.guild.members.cache.find(member => member.nickname === targetId);
+                if (targetMember) {
+                    targetUser = targetMember.user;
+                } else {
+                    return message.lineReply('Invalid UserID or Nickname.');
+                }
+            } else {
+                targetUser = isValidUser;
+            }
+        } else {
+            return message.lineReply('Please provide UserID or Nickname you want to warn.');
+        }
+
+    let database = readDatabase();
+
+    if (!database.warnings[targetUser.id]) {
+        database.warnings[targetUser.id] = 0;
+    }
+
+    database.warnings[targetUser.id]++;
+
+    writeDatabase(database);
+
+    const reason = args.slice(targetId ? 1 : 0).join(' ') || 'No Reason';
+
+    targetUser.send(`You have been warned in **${message.guild.name}** for: ${reason}. Total warnings: ${database.warnings[targetUser.id]}`)
+        .then(() => {
+            message.channel.send(`Successfully warned ${targetUser.tag} for: ${reason}. Total warnings: ${database.warnings[targetUser.id]}`);
+        })
+        .catch(error => {
+            console.error(`Failed to warn ${targetUser.tag}:`, error);
+            message.channel.send(`Failed to warn ${targetUser.tag}.`);
+        });
+     }
+  
+  if (command === "kick") {
+    if (!message.member.hasPermission('KICK_MEMBERS')) {
+      return message.lineReply(
+        "You don't have enough permission to use this command."
+      );
+    }
+
+    let user;
+    let target = args[0];
+    if (!target) {
+      return message.lineReply("Please provide UserID or Nickname you want to kick.");
+  } else {
+      
+      if (target.match(/^\d+$/)) {
+          user = await client.users.fetch(target).catch(() => null);
+      } else {
+          
+          user = message.guild.members.cache.find(member => member.nickname === target);
+      }
+  }
+
+    if (!user) {
+        return message.lineReply("Invalid UserID or Nickname.");
+    }
+
+    if (user.id === message.author.id) {
+      return message.lineReply("You can't kick yourself");
+    } else if (user.id === message.guild.ownerId) {
+      return message.lineReply("You can't kick owner of the server");
+    } else if (user.id === client.user.id) {
+      return message.lineReply("You can't kick me :clown:");
+    }
+
+    let reason = args.slice(1).join(" ") || "No Reason";
+    let member = message.guild.members.cache.get(user.id);
+
+    member
+    .kick({ reason: reason })
+    .then(() => {
+        
+        message.channel.send(
+            `Successfully kicked ${user.tag}, for: ${reason}, userID: ${user.id}`
+        );
+        
+        user.send(`You have been kicked from **${message.guild.name}** for: ${reason}`)
+            .catch(console.error); 
+    })
+    .catch(() => {
+        return message.lineReply(
+            "I don't have enough permission to kick this user."
+        );
+    });
+  }
+
+  if (command === "ban") {
+    if (!message.member.hasPermission('BAN_MEMBERS')) {
+      return message.lineReply(
+          "You don't have enough permission to use this command."
+      );
+  }
+
+  let user;
+    let target = args[0];
+    if (!target) {
+      return message.lineReply("Please provide UserID or Nickname you want to ban.");
+  } else {
+      
+      if (target.match(/^\d+$/)) {
+          user = await client.users.fetch(target).catch(() => null);
+      } else {
+          
+          user = message.guild.members.cache.find(member => member.nickname === target);
+      }
+  }
+
+  if (!user) {
+      return message.lineReply("Invalid userID or Nickname.");
+  }
+
+  if (user.id === message.author.id) {
+      return message.lineReply("You can't ban yourself");
+  } else if (user.id === message.guild.ownerId) {
+      return message.lineReply("You can't ban owner of the server");
+  } else if (user.id === client.user.id) {
+      return message.lineReply("You can't ban me :clown:");
+  }
+
+  let reason = args.slice(1).join(" ") || "No Reason";
+  let member = message.guild.members.cache.get(user.id);
+
+  member
+      .ban({ reason: reason })
+      .then(() => {
+          
+          message.channel.send(
+              `Successfully banned ${user.tag}, for: ${reason}, userID: ${user.id}`
+          );
+          
+          user.send(`You have been banned from **${message.guild.name}** for: ${reason}`)
+              .catch(console.error); 
+      })
+      .catch(() => {
+          return message.lineReply(
+              "I don't have enough permission to ban this user."
+          );
+      });
+  }
+
+  if (command === "unban") {
+    if (!message.member.hasPermission('BAN_MEMBERS')) {
+      return message.lineReply("You don't have enough permission to use this command.");
+  }
+
+  const userId = args[0];
+
+  if (!userId) {
+      return message.lineReply("Please provide the UserID you want to unban.");
+  }
+
+  try {
+
+        const bans = await message.guild.fetchBans();
+        const banInfo = bans.get(userId);
+
+    if (!banInfo) {
+        return message.lineReply("This user is not banned.");
+    }
+
+    await message.guild.members.unban(userId);
+
+    message.lineReply(`Successfully unbanned ${banInfo.user.tag}`);
+} catch (error) {
+
+    console.error('Error while unbanning user:', error);
+    message.lineReply('An error occurred while unbanning the user. Please try again later.');
+}
+
+  }
+
+  if (command === "mute") {
+    if (!message.member.hasPermission('MANAGE_ROLES')) {
+      return message.lineReply(
+          "You don't have enough permission to use this command."
+      );
+  }
+
+    let user;
+    let target = args[0];
+    if (!target) {
+      return message.lineReply("Please provide UserID or Nickname you want to mute.");
+  } else {
+      
+      if (target.match(/^\d+$/)) {
+          user = await client.users.fetch(target).catch(() => null);
+      } else {
+          
+          user = message.guild.members.cache.find(member => member.nickname === target);
+      }
+  }
+
+  if (!user) {
+      return message.lineReply("Invalid UserID or Nickname.");
+  }
+
+  if (user.id === message.author.id) {
+      return message.lineReply("You can't mute yourself");
+  } else if (user.id === message.guild.ownerId) {
+      return message.lineReply("You can't mute owner of the server");
+  } else if (user.id === client.user.id) {
+      return message.lineReply("You can't mute me :clown:");
+  }
+
+  let reason = args.slice(1).join(" ") || "No Reason";
+  let member = message.guild.members.cache.get(user.id);
+
+  let muteRole = message.guild.roles.cache.find(role => role.name === "Muted");
+  if (!muteRole) {
+    try {
+      
+      muteRole = await message.guild.roles.create({
+          data: {
+              name: "Muted",
+              color: "#000000",
+              permissions: []
+          }
+      });
+  
+      
+      await Promise.all(
+          message.guild.channels.cache.map(async (channel) => {
+              await channel.updateOverwrite(muteRole, {
+                  SEND_MESSAGES: false,
+                  ADD_REACTIONS: false
+              });
+          })
+      );
+  
+
+  } catch (err) {
+      
+      console.error('Error occurred while creating mute role and updating channel permissions:', err);
+      message.channel.send("An error occurred while processing your request. Please try again later.");
+  }
+
+  } else {
+    if (member.roles.cache.has(muteRole.id)) {
+        return message.lineReply("This user has been muted.");
+    } else {
+        member.roles.add(muteRole).then(() => {
+            message.channel.send(
+                `Successfully muted ${user.tag}, for: ${reason}, userID: ${user.id}`
+            );
+            user.send(`You have been muted in **${message.guild.name}** for: ${reason}`).catch(console.error);
+        }).catch(() => {
+            return message.lineReply(
+                "I don't have enough permission to mute this user."
+            );
+        });
+    }
+    }
+
+  }
+
+  if (command === "unmute") {
+    if (!message.member.hasPermission('MANAGE_ROLES')) {
+      return message.lineReply("You don't have enough permission to use this command.");
+  }
+
+  const userId = args[0];
+
+  if (!userId) {
+      return message.lineReply("Please provide the UserID you want to unmute.");
+  }
+
+  const user = message.guild.members.cache.get(userId);
+
+  if (!user) {
+      return message.lineReply("User not found. Please provide a valid UserID.");
+  }
+
+  const muteRole = message.guild.roles.cache.find(role => role.name === "Muted");
+
+  if (!muteRole) {
+      return message.lineReply("Mute role has not been set up yet.");
+  }
+
+  if (!user.roles.cache.has(muteRole.id)) {
+      return message.lineReply("This user is not muted.");
+  }
+
+  try {
+      await user.roles.remove(muteRole);
+      message.lineReply(`Successfully unmuted user ${user.user.tag}`);
+  } catch (error) {
+      console.error('Error while unmuting user:', error);
+      message.lineReply('An error occurred while unmuting the user. Please try again later.');
+  }
+
+  }
 
     /*-----------------------------------------other commands----------------------------------------------------*/
 
+
   if (command === "help") {
-    let user = message.mentions.users.first();
     const embed = new Discord.MessageEmbed()
       .setColor("RANDOM")
       .setDescription(
         ` **__My current commands__**
-My prefix is ( * ) `
+ My prefix is ( * ) `
       )
       .addField(
         "🕹️ **__Fun__**",
-        `***ship <user>\n*ppsize\n*rps\n*fasttype / fast**`
+        `***ship <@user>\n*ppsize\n*rps\n*fasttype / fast\n*hack <@user>**`
       )
       .addField(
         "🛠️ **__ Utility__**",
-        `***test\n*avatar <userID>\n*dm <user ID> <text>\n*weather\n*snipe**`
+        `***test\n*nuke (To nuke a channel)\n*avatar <userID>\n*dm <userID> <message>\n*weather\n*snipe**`
       )
       .addField(
         "🎰 **__Gambling__**",
         `***register <username>\n*bet <amount>\n*send <@user> <amount>\n*daily\n*profile**`
+      )
+      .addField(
+        "🚨 **__Moderating__**",
+        `***warn <userID / nickname> <reason>\n*kick <userID / nickname> <reason>\n*ban <userID / nickname> <reason>\n*mute <userID / nickname> <reason>\n*unban <userID>\n*unmute <userID>**`
       )
       .setFooter(`Made by notququ`)
       .setTimestamp();
 
     return message.lineReply(embed);
   }
+  
+  if (command === "ttt") {
+    const msg = await message.channel.send(printBoard());
+        for (let i = 1; i <= 9; i++) {
+            await msg.react(i.toString() + '\uFE0F\u20E3');
+        }
+  }
+    
+});
 
-})
 
 client.login(process.env.TOKEN);
 
