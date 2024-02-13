@@ -8,6 +8,11 @@ const database = new jsoning('bank.json');
 require('dotenv/config');
 const botgpt = require('./chatbot.js');
 const fs = require('fs');
+const axios = require('axios');
+const cheerio = require('cheerio');
+
+const board = Array(9).fill(':white_large_square:');
+const playerSymbols = { 'X': ':x:', 'O': ':o:' }; 
 
 const { channelId } = require('./config.json');
 const { createPool } = require('mysql2/promise');
@@ -18,15 +23,13 @@ const clownReactions = {};
 const editedMessages = new Map();
 const databaseFile = 'punishment.json';
 
-const board = Array(9).fill(':white_large_square:');
-
-let currentPlayer = 'X';
-
 const connection = createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   database: process.env.DB_DATABASE,
 });
+
+let gameMessage = null;
 
 function printBoard() {
   let boardString = '';
@@ -36,7 +39,7 @@ function printBoard() {
   return boardString;
 }
 
-function checkWinner() {
+function checkWinner(board) {
   const winningPositions = [
       [0, 1, 2], [3, 4, 5], [6, 7, 8], // Horizontal
       [0, 3, 6], [1, 4, 7], [2, 5, 8], // Vertical
@@ -54,9 +57,37 @@ function checkWinner() {
   return null;
 }
 
+function botMove() {
+  // Implementasi sederhana: Bot akan memilih langkah secara acak
+  let index;
+  do {
+      index = Math.floor(Math.random() * 9);
+  } while (board[index] !== ':white_large_square:');
+  return index;
+}
+
+async function getInstagramProfile(username) {
+  try {
+      const response = await axios.get(`https://www.instagram.com/${username}/`);
+      const html = response.data;
+      const $ = cheerio.load(html);
+
+      const fullName = $('meta[property="og:title"]').attr('content');
+      const biography = $('meta[property="og:description"]').attr('content');
+      const profilePicUrlHD = $('meta[property="og:image"]').attr('content');
+
+      const followersCount = parseInt($('meta[property="og:description"]').attr('content').split(',')[1].trim().split(' ')[0].replace(/,/g, ''));
+      const followingCount = parseInt($('meta[property="og:description"]').attr('content').split(',')[2].trim().split(' ')[0].replace(/,/g, ''));
+      const postsCount = parseInt($('meta[property="og:description"]').attr('content').split(',')[0].trim().split(' ')[0].replace(/,/g, ''));
+
+      return { fullName, biography, profilePicUrlHD, followersCount, followingCount, postsCount };
+  } catch (error) {
+      console.error('Error fetching Instagram profile:', error);
+      return null;
+  }
+}
 
 const prefix = '*';
-
 
 const client = new Discord.Client({
   allowedMentions: {
@@ -100,8 +131,38 @@ client.on('messageDelete', deletedMsg => {
   };
 });
 
+
+
 client.on('message', async message => {
 
+  client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return; // Pastikan hanya bot yang merespons dan hanya jika bot yang mereact
+  
+    if (gameMessage === null || reaction.message.id !== gameMessage.id) return;
+  
+    const index = parseInt(reaction.emoji.name.charAt(0)) - 1;
+    if (isNaN(index) || index < 0 || index > 8 || board[index] !== ':white_large_square:') return;
+  
+    board[index] = playerSymbols['X'];
+    const winner = checkWinner(board);
+  
+      if (winner || !board.includes(':white_large_square:')) {
+        if (winner === 'tie') {
+          gameMessage.channel.send(printBoard() + '\nIt\'s a tie!');
+        } else if (winner) {
+          gameMessage.channel.send(printBoard() + `\n${winner} wins!`);
+        }
+        board.fill(':white_large_square:');
+        currentPlayer = 'X'; // Kembali ke giliran awal yang diacak
+        gameMessage = null;
+      } else {
+        currentPlayer = 'O';
+        const botIndex = botMove();
+        board[botIndex] = playerSymbols[currentPlayer];
+        gameMessage.edit(printBoard());
+      }
+      
+  });
 
   let user = message.mentions.users.first();
 
@@ -171,6 +232,39 @@ client.on('message', async message => {
         return message.channel.send(embed);
       }
     );
+  }
+
+  if (command === "ig" || command === "instagram") {
+    const username = args[0];
+
+        if (!username) {
+            return message.lineReply('Please insert the Instagram username.');
+        }
+
+        try {
+            const profile = await getInstagramProfile(username);
+
+            if (!profile) {
+                return message.lineReply(`Can't access or found this profile.`);
+            }
+
+            const profileEmbed = new Discord.MessageEmbed()
+                .setColor('#ff9900')
+                .setTitle(profile.fullName)
+                .setURL(`https://www.instagram.com/${username}/`)
+                .setDescription(profile.biography)
+                .setThumbnail(profile.profilePicUrlHD)
+                .addField('Followers', profile.followersCount, true)
+                .addField('Following', profile.followingCount, true)
+                .addField('Posts', profile.postsCount, true)
+                .setTimestamp()
+                .setFooter(`Requested by ${message.author.tag}`);
+
+            message.channel.send(profileEmbed);
+        } catch (error) {
+            console.error('Error fetching Instagram data:', error);
+            message.lineReply('An error occurred while fetching data from Instagram.');
+        }
   }
 
   if (command === "ship") {
@@ -404,36 +498,7 @@ client.on('message', async message => {
         });
 
     }
-    
-    if (command === "ttt") {
-      const row = parseInt(args[0]) - 1;
-      const col = parseInt(args[1]) - 1;
 
-      // Validasi apakah input adalah angka yang valid
-      if (isNaN(row) || isNaN(col) || row < 0 || row >= 3 || col < 0 || col >= 3) {
-          return message.reply('Input baris dan kolom harus berupa angka antara 1 dan 3!');
-      }
-
-      if (board[row][col] !== ':') {
-          return message.reply('Posisi tersebut sudah diambil!');
-      }
-
-      board[row][col] = symbols[0];
-
-      displayBoard(message);
-
-      const winner = checkWinner();
-      if (winner) {
-          return message.channel.send(`Pemenangnya adalah: ${winner}!`);
-      }
-
-      if (isBoardFull()) {
-          return message.channel.send('Permainan seri!');
-      }
-
-      symbols.reverse();
-      
-    }
   
     if (command === "echo") {
       const echoText = args.join(' ');
@@ -844,7 +909,8 @@ client.on('message', async message => {
       const avatarURL = targetUser.displayAvatarURL({ format: "png", dynamic: true });
       const embed = new Discord.MessageEmbed()
        .setColor('#0099ff')
-       .setAuthor(`${username}'s Profile`, avatarURL)
+       .setAuthor(`${username}'s Profile`)
+       .setThumbnail(avatarURL)
        .addField('Username', username)
        .addField('Balance', `${balance} coins`)
        .addField('Total Bets', `${total_gamble}`)
@@ -1186,11 +1252,11 @@ client.on('message', async message => {
       )
       .addField(
         "🕹️ **__Fun__**",
-        `***ship <@user>\n*ppsize\n*rps\n*fasttype / fast\n*hack <@user>**`
+        `***ship <@user>\n*ppsize\n*rps\n*fasttype / fast\n*hack <@user>\n*ttt**`
       )
       .addField(
         "🛠️ **__ Utility__**",
-        `***test\n*nuke (To nuke a channel)\n*avatar <userID>\n*dm <userID> <message>\n*weather\n*snipe**`
+        `***test\n*nuke (To nuke a channel)\n*avatar <userID>\n*dm <userID> <message>\n*weather <city>\n*instagram / ig <username>\n*snipe**`
       )
       .addField(
         "🎰 **__Gambling__**",
@@ -1207,10 +1273,30 @@ client.on('message', async message => {
   }
   
   if (command === "ttt") {
-    const msg = await message.channel.send(printBoard());
-        for (let i = 1; i <= 9; i++) {
-            await msg.react(i.toString() + '\uFE0F\u20E3');
-        }
+    currentPlayer = 'X';
+
+    const playerReact = message.author.id;
+    const playerUser = client.users.cache.get(playerReact);
+
+    await message.channel.send(`${playerUser.tag} turn is :x: VS bot turn is :o:`);
+    
+    const boardMessage = await message.channel.send(printBoard());
+
+    // React pada kolom
+    for (let i = 1; i <= 9; i++) {
+        await boardMessage.react(i.toString() + '\uFE0F\u20E3');
+    }
+
+    // Simpan pesan permainan saat ini
+    gameMessage = boardMessage;
+
+    if (currentPlayer === 'O') {
+      const index = botMove();
+      board[index] = playerSymbols[currentPlayer];
+
+      // Update papan permainan setelah langkah bot
+      await boardMessage.edit(printBoard());
+  }
   }
     
 });
