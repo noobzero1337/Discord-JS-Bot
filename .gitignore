@@ -1,0 +1,13 @@
+# folders
+node_modules/
+
+# files
+.env
+chatbot.js
+cookies.json
+config.json
+backup.js
+bash.exe.stackdump
+punishment.json
+discloud.config
+bank.json

@@ -10,6 +10,8 @@ const botgpt = require('./chatbot.js');
 const fs = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { parse } = require('node-html-parser');
+const fetch = require('node-fetch');
 
 const board = Array(9).fill(':white_large_square:');
 const playerSymbols = { 'X': ':x:', 'O': ':o:' }; 
@@ -21,14 +23,18 @@ require('dotenv').config();
 const deletedMessages = {};
 const clownReactions = {};
 const editedMessages = new Map();
+const cooldowns = new Set();
 const databaseFile = 'punishment.json';
 
+// DB connection
 const connection = createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   database: process.env.DB_DATABASE,
 });
 
+let targetGuildId = 'YOUR_GUILD_ID';
+let msgGuildId = 'YOUR_GUILD_ID'; 
 let gameMessage = null;
 
 function printBoard() {
@@ -66,7 +72,8 @@ function botMove() {
   return index;
 }
 
-async function getInstagramProfile(username) {
+async function scrapeInstagramProfile(username) {
+
   try {
       const response = await axios.get(`https://www.instagram.com/${username}/`);
       const html = response.data;
@@ -82,10 +89,11 @@ async function getInstagramProfile(username) {
 
       return { fullName, biography, profilePicUrlHD, followersCount, followingCount, postsCount };
   } catch (error) {
-      console.error('Error fetching Instagram profile:', error);
-      return null;
+      console.error('Error:', error);
+      throw new Error('An error occurred while fetching the data.');
   }
 }
+
 
 const prefix = '*';
 
@@ -112,8 +120,8 @@ client.on("ready", () => {
   const status = [
     //`SiLver#7420`,
     `( *help )`,
-    // `${client.users.cache.size} Users`, //this for count user
-    //`${client.guilds.cache.size} Guilds` //gunanya untuk count server yang dimasuki oleh bot
+    // `${client.users.cache.size} Users`, //this for count users
+    //`${client.guilds.cache.size} Guilds` //this for count servers
   ];
   setInterval(async () => {
     client.user.setActivity(status[Math.floor(Math.random() * status.length)], {
@@ -131,7 +139,7 @@ client.on('messageDelete', deletedMsg => {
   };
 });
 
-
+client.setMaxListeners(20);
 
 client.on('message', async message => {
 
@@ -242,29 +250,27 @@ client.on('message', async message => {
         }
 
         try {
-            const profile = await getInstagramProfile(username);
+          const profile = await scrapeInstagramProfile(username);
 
-            if (!profile) {
-                return message.lineReply(`Can't access or found this profile.`);
-            }
-
-            const profileEmbed = new Discord.MessageEmbed()
-                .setColor('#ff9900')
-                .setTitle(profile.fullName)
-                .setURL(`https://www.instagram.com/${username}/`)
-                .setDescription(profile.biography)
-                .setThumbnail(profile.profilePicUrlHD)
-                .addField('Followers', profile.followersCount, true)
-                .addField('Following', profile.followingCount, true)
-                .addField('Posts', profile.postsCount, true)
-                .setTimestamp()
-                .setFooter(`Requested by ${message.author.tag}`);
-
-            message.channel.send(profileEmbed);
-        } catch (error) {
-            console.error('Error fetching Instagram data:', error);
-            message.lineReply('An error occurred while fetching data from Instagram.');
+          if (!profile || !profile.fullName) {
+            return message.lineReply(`Can't access or found this profile.`);
         }
+
+          const profileEmbed = new Discord.MessageEmbed()
+          .setColor('#ff9900')
+          .setTitle(profile.fullName)
+          .setURL(`https://www.instagram.com/${username}/`)
+          .setDescription(profile.biography)
+          .setThumbnail(profile.profilePicUrl)
+          .addField('Followers', profile.followersCount)
+          .setTimestamp()
+          .setFooter(`Requested by ${message.author.tag}`);
+
+      message.channel.send(profileEmbed);
+    } catch (error) {
+        console.error('Error fetching Instagram data:', error);
+        message.lineReply('An error occurred while fetching data from Instagram.');
+    }
   }
 
   if (command === "ship") {
@@ -515,8 +521,8 @@ client.on('message', async message => {
     }
 
   if (command === "msgedit") {
-    const serverId = '1061469032408158218'; // ebol
-    const channelId = '1101568951848271973'; // ngomong-anjing
+    const serverId = 'YOUR_GUILD_ID'; 
+    const channelId = 'YOUR_GUILD_CHANNEL'; 
     const messageId = args[0]; 
     const newContent = args.slice(1).join(' '); 
 
@@ -557,8 +563,8 @@ client.on('message', async message => {
   
   if (command === "clown") {
     const userId = args[0]; // User ID
-    const targetServerId = '1061469032408158218'; // ebol
-    const targetChannelId = '1101568951848271973'; // ngomong-anjing
+    const targetServerId = 'YOUR_GUILD_ID'; 
+    const targetChannelId = 'YOUR_GUILD_CHANNEL'; 
 
     try {
         // Cari server tempat pengguna berada
@@ -600,13 +606,13 @@ client.on('message', async message => {
         });
     } catch (error) {
         console.error('Error:', error);
-        message.reply('An error occurred while using command.');
+        message.lineReply('An error occurred while using command.');
     }
   }
 
   if (command === "unclown") {
     const userId = args[0]; // User ID
-    const targetServerId = '1061469032408158218'; // ebol
+    const targetServerId = 'YOUR_GUILD_ID'; 
 
     // Verifikasi apakah pengguna ada dalam daftar reaksi clown untuk server target
     if (clownReactions[targetServerId] && clownReactions[targetServerId][userId]) {
@@ -622,8 +628,8 @@ client.on('message', async message => {
 
   if (command === "msgclown") {
     const messageId = args[0]; // Message ID
-    const targetServerId = '1061469032408158218'; // ebol
-    const targetChannelId = '1101568951848271973'; // ngomong-anjing
+    const targetServerId = 'YOUR_GUILD_ID'; 
+    const targetChannelId = 'YOUR_GUILD_CHANNEL'; 
 
     try {
         // Dapatkan server tempat pesan berada
@@ -650,12 +656,12 @@ client.on('message', async message => {
         };
     } catch (error) {
         console.error('Error:', error);
-        message.reply('An error occurred while using command.');
+        message.lineReply('An error occurred while using command.');
     }
   }
 
   if (command === "clownlist") {
-    const targetServerId = '1061469032408158218'; // ebol
+    const targetServerId = 'YOUR_GUILD_ID'; 
 
     // Verifikasi apakah ada daftar reaksi clown untuk server target
     if (clownReactions[targetServerId]) {
@@ -676,6 +682,63 @@ client.on('message', async message => {
         message.channel.send('Tidak ada daftar reaksi clown untuk server ini.');
     }
   }
+
+  if (command === "setservericon") {
+    if (!message.member.hasPermission('ADMINISTRATOR')) {
+      return message.lineReply(`You don't have permission to use this command.`);
+  }
+
+  // Mengambil URL gambar dari argumen
+  const imageUrl = args[0];
+  if (!imageUrl) return message.channel.send('Please give a valid image URL.');
+
+  // Mendapatkan objek guild dari ID server yang telah ditetapkan sebelumnya
+  const targetGuild = client.guilds.cache.get(targetGuildId);
+  if (!targetGuild) return message.channel.send(`Can't find the server with that ID.`);
+
+  // Memperbarui ikon server
+  try {
+      await targetGuild.setIcon(imageUrl);
+      message.channel.send('Server icon has been updated.');
+  } catch (error) {
+      console.error('Failed update server icon :', error);
+      message.channel.send('An error occurred while updating server icon.');
+  }
+  }
+
+  if (command === "replymsg") {
+    if (!message.member.hasPermission('ADMINISTRATOR')) {
+            return message.lineReply('Anda tidak memiliki izin untuk menggunakan perintah ini!');
+        }
+
+        const channelId = args[0];
+        const messageId = args[1];
+        const replyContent = args.slice(2).join(' ');
+
+        // Mengambil objek guild dari ID yang telah ditentukan
+        const targetGuild = client.guilds.cache.get(msgGuildId);
+        if (!targetGuild) return message.lineReply(`Can't find the guild with that ID`);
+
+        // Mendapatkan channel dari guild dengan ID yang telah ditentukan
+        const channel = targetGuild.channels.cache.get(channelId);
+        if (!channel) return message.lineReply(`Can't find channel in the guild`);
+
+        // Mengambil objek pesan yang akan dibalas
+        try {
+          const originalMessage = await channel.messages.fetch(messageId);
+          // Memastikan pesan ditemukan
+          if (originalMessage) {
+              // Membalas pesan dengan isi yang diberikan            
+              originalMessage.lineReply(replyContent);
+            }
+
+            // Membalas pesan dengan isi yang diberikan            
+            originalMessage.lineReply(replyContent);
+        } catch (error) {
+            console.error('Error replying message:', error);
+            message.channel.send(`Can't find message with that ID`);
+        }
+}
 
   if (command === "nuke") {
     if (!message.member.hasPermission("ADMINISTRATOR")) {
@@ -742,13 +805,14 @@ client.on('message', async message => {
 
     try {
 
-      const [existingUsers] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
+      const query1 = 'SELECT * FROM tb_user_data WHERE user_id = ?'
+      const [existingUsers] = await connection.query(query1, [userId]);
       if (existingUsers.length > 0) {
         return message.lineReply('You are already registered.');
       }
 
-
-      await connection.query('INSERT INTO tb_user_data (user_id, username) VALUES (?, ?)', [userId, username]);
+      const query2 = 'INSERT INTO tb_user_data (user_id, username) VALUES (?, ?)'
+      await connection.query(query2, [userId, username]);
       message.lineReply('Registration successful!');
     } catch (error) {
       console.error(error);
@@ -756,46 +820,47 @@ client.on('message', async message => {
     }
   };
 
-    if(command === "daily") {
-      const userId = message.author.id;
-      const [rows] = await connection.query('SELECT last_daily, daily_count FROM tb_user_data WHERE user_id = ?', [userId]);
-
+  if (command === "daily") {
+    const userId = message.author.id;
+    const query1 = 'SELECT last_daily, daily_count FROM tb_user_data WHERE user_id = ?';
+    const [rows] = await connection.query(query1, [userId]);
+  
     if (rows.length === 0) {
       return message.lineReply("You are not registered. `Type *register` to register.");
     }
-
-    const cooldownTime = 24 * 60 * 60 * 1000; 
-    const lastDaily = new Date(rows[0].last_daily).getTime();
-    const currentTime = new Date().getTime();
+  
+    // Set cooldown time to 10 minutes
+    const cooldownTime = 24 * 60 * 60 * 1000;
+    const currentTime = new Date().getTime(); // Current time in milliseconds
+    const lastDaily = rows[0].last_daily ? new Date(rows[0].last_daily).getTime() : 0;
     const timeSinceLastDaily = currentTime - lastDaily;
-
+  
     if (timeSinceLastDaily < cooldownTime) {
       const remainingTime = cooldownTime - timeSinceLastDaily;
       const hours = Math.floor(remainingTime / (1000 * 60 * 60));
       const minutes = Math.floor((remainingTime % (1000 * 60 * 60)) / (1000 * 60));
-
-   return message.lineReply(`You can claim your daily reward again in \`${hours} hours, ${minutes} minutes\``);
-
+      return message.lineReply(`You can claim your daily reward again in \`${hours} hours, ${minutes} minutes\``);
     } else {
-
       const minReward = 500;
       const maxReward = 1000;
       const dailyReward = Math.floor(Math.random() * (maxReward - minReward + 1)) + minReward;
       const newDailyCount = rows[0].daily_count + 1;
-
-      await Promise.all([
-        connection.query('UPDATE tb_user_data SET balance = balance + ?, last_daily = CURRENT_TIMESTAMP, daily_count = ? WHERE user_id = ?', [dailyReward, newDailyCount, userId])
-      ]);
-
-      message.lineReply(`You've claimed your daily reward and received ${dailyReward} coins!`);
-
+  
+      // Update database with CURRENT_TIMESTAMP for last_daily
+      const query2 = `
+        UPDATE tb_user_data SET balance = balance + ?, last_daily = CURRENT_TIMESTAMP, daily_count = ? 
+        WHERE user_id = ?`
+  
+      await connection.query(query2, [dailyReward, newDailyCount, userId])
+  
+      return message.lineReply(`You've claimed your daily reward and received ${dailyReward} coins!`);
     }
-
   };
 
   if (command === "bet") {
     const userId = message.author.id;
-    const [userData] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [userId]);
+    const query1 = 'SELECT * FROM tb_user_data WHERE user_id = ?'
+    const [userData] = await connection.query(query1, [userId]);
 
     if (userData.length === 0) {
       return message.lineReply("You are not registered. Type `*register <username>` to register.");
@@ -815,11 +880,14 @@ client.on('message', async message => {
     const isWin = Math.random() < 0.5;
     const result = isWin ? 'Won' : 'Lost';
     const outcome = isWin ? betAmount : -betAmount;
+    const query2 = 'UPDATE tb_user_data SET balance = balance + ?, '
+    const query3 = 'total_gamble = total_gamble + 1, ' 
+    const winCount = 'win_count = win_count + 1' 
+    const loseCount = 'lose_count = lose_count + 1'
+    const uid = ' WHERE user_id = ?'
 
-    await connection.query('UPDATE tb_user_data SET balance = balance + ?, ' +
-    'total_gamble = total_gamble + 1, ' +
-    (isWin ? 'win_count = win_count + 1' : 'lose_count = lose_count + 1') +
-    ' WHERE user_id = ?', [outcome, userId]);
+    await connection.query(query2 + query3 +
+    (isWin ? winCount : loseCount) + uid, [outcome, userId]);
 
     const embedColor = isWin ? '#00ff00' : '#ff0000';
     const request = message.author.tag;
@@ -861,7 +929,8 @@ client.on('message', async message => {
 
   } try {
 
-    const [senderData] = await connection.query('SELECT balance FROM tb_user_data WHERE user_id = ?', [senderId]);
+    const query1 = 'SELECT balance FROM tb_user_data WHERE user_id = ?'
+    const [senderData] = await connection.query(query1, [senderId]);
 
     if (senderData.length === 0) {
       return message.lineReply("You are not registered. Type `*register <username>` to register");
@@ -873,16 +942,19 @@ client.on('message', async message => {
       return message.lineReply("Insufficient balance to send this amount of coins.");
     }
 
-    await connection.query('UPDATE tb_user_data SET balance = balance - ? WHERE user_id = ?', [amount, senderId]);
+    const query2 = 'UPDATE tb_user_data SET balance = balance - ? WHERE user_id = ?'
+    await connection.query(query2, [amount, senderId]);
 
     try {
-      const [receiverData] = await connection.query('SELECT balance FROM tb_user_data WHERE user_id = ?', [receiverUser.id]);
+      const query3 = 'SELECT balance FROM tb_user_data WHERE user_id = ?'
+      const [receiverData] = await connection.query(query3, [receiverUser.id]);
 
       if (receiverData.length === 0) {
         return message.lineReply("Receiver is not registered.");
       }
 
-      await connection.query('UPDATE tb_user_data SET balance = balance + ? WHERE user_id = ?', [amount, receiverUser.id]);
+      const query4 = 'UPDATE tb_user_data SET balance = balance + ? WHERE user_id = ?'
+      await connection.query(query4, [amount, receiverUser.id]);
 
       message.lineReply(`Successfully sent ${amount} coins to ${receiverUser.tag}`);
     } catch (receiveError) {
@@ -898,7 +970,8 @@ client.on('message', async message => {
 
   if (command === "profile") {
       let targetUser = message.mentions.users.first() || message.author;
-      const [userData] = await connection.query('SELECT * FROM tb_user_data WHERE user_id = ?', [targetUser.id]);
+      const query = 'SELECT * FROM tb_user_data WHERE user_id = ?'
+      const [userData] = await connection.query(query, [targetUser.id]);
   
       if (userData.length === 0) {
         return message.lineReply(`${targetUser.tag} are not registered.`);
@@ -1273,6 +1346,18 @@ client.on('message', async message => {
   }
   
   if (command === "ttt") {
+
+    if (cooldowns.has(message.author.id)) {
+      message.lineReply("Wait few seconds before you using this command again.");
+      return;
+    }
+
+    // Tambahkan pengguna ke dalam cooldown
+    cooldowns.add(message.author.id);
+    setTimeout(() => {
+      cooldowns.delete(message.author.id);
+    }, 5000);
+
     currentPlayer = 'X';
 
     const playerReact = message.author.id;
