@@ -33,8 +33,8 @@ const connection = createPool({
   database: process.env.DB_DATABASE,
 });
 
-let targetGuildId = 'YOUR_GUILD_ID';
-let msgGuildId = 'YOUR_GUILD_ID'; 
+let targetGuildId = 'TARGET_GUILD_ID';
+let msgGuildId = 'TARGET_GUILD_ID'; 
 let gameMessage = null;
 
 function printBoard() {
@@ -521,8 +521,8 @@ client.on('message', async message => {
     }
 
   if (command === "msgedit") {
-    const serverId = 'YOUR_GUILD_ID'; 
-    const channelId = 'YOUR_GUILD_CHANNEL'; 
+    const serverId = 'TARGET_GUILD_ID'; 
+    const channelId = 'TARGET_GUILD_CHANNEL_ID'; 
     const messageId = args[0]; 
     const newContent = args.slice(1).join(' '); 
 
@@ -563,8 +563,8 @@ client.on('message', async message => {
   
   if (command === "clown") {
     const userId = args[0]; // User ID
-    const targetServerId = 'YOUR_GUILD_ID'; 
-    const targetChannelId = 'YOUR_GUILD_CHANNEL'; 
+    const targetServerId = 'TARGET_GUILD_ID'; 
+    const targetChannelId = 'TARGET_GUILD_CHANNEL_ID'; 
 
     try {
         // Cari server tempat pengguna berada
@@ -612,7 +612,7 @@ client.on('message', async message => {
 
   if (command === "unclown") {
     const userId = args[0]; // User ID
-    const targetServerId = 'YOUR_GUILD_ID'; 
+    const targetServerId = 'TARGET_GUILD_ID'; 
 
     // Verifikasi apakah pengguna ada dalam daftar reaksi clown untuk server target
     if (clownReactions[targetServerId] && clownReactions[targetServerId][userId]) {
@@ -628,8 +628,8 @@ client.on('message', async message => {
 
   if (command === "msgclown") {
     const messageId = args[0]; // Message ID
-    const targetServerId = 'YOUR_GUILD_ID'; 
-    const targetChannelId = 'YOUR_GUILD_CHANNEL'; 
+    const targetServerId = 'TARGET_GUILD_ID'; 
+    const targetChannelId = 'TARGET_GUILD_CHANNEL_ID'; 
 
     try {
         // Dapatkan server tempat pesan berada
@@ -661,7 +661,7 @@ client.on('message', async message => {
   }
 
   if (command === "clownlist") {
-    const targetServerId = 'YOUR_GUILD_ID'; 
+    const targetServerId = 'TARGET_GUILD_ID'; 
 
     // Verifikasi apakah ada daftar reaksi clown untuk server target
     if (clownReactions[targetServerId]) {
