@@ -1,4 +1,5 @@
 # The Slave Discord Bot
+The invite bot link are not publish by me, so just confirm to me if wanna invite the bot into server like for trying, testing, etc.
 
 ## Features
 
